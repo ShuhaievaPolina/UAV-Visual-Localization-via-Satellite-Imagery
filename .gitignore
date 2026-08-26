@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.zip
+06/
+satellite06.tif
+satellite_ coordinates_range.csv
