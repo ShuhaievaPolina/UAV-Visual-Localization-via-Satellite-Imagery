@@ -104,18 +104,11 @@ Open and run `notebooks/UAV_Visual_Localization.ipynb` in Google Colab or locall
 
 ```text
 .
-├── assets/                  # Plots, diagrams, and visualization examples
+├── assets/                                     # Plots, diagrams, and visualization examples
 │   └── localization_map_06.png
-├── notebooks/               # Experimental Colab / Jupyter notebooks
-│   └── UAV_Visual_Localization.ipynb
-├── src/                     # Modular source code
-│   ├── __init__.py
-│   ├── calibration.py       # Pixel-to-WGS84 coordinate conversion and calibration
-│   ├── database.py          # Satellite map tiling and embedding extraction
-│   ├── matching.py          # Local feature matching (ALIKED + LightGlue)
-│   └── pipeline.py          # Main execution script and HME calculation
-├── .gitignore               # Ignored temporary files, datasets, and cache
-├── predictions_06.csv       # Final prediction results
-├── README.md                # Main project documentation
-└── requirements.txt         # Project dependencies
+├── UAV_Visual_Localization.ipynb               # Experimental Colab / Jupyter notebooks
+├── .gitignore                                  # Ignored temporary files, datasets, and cache
+├── predictions_06.csv                          # Final prediction results
+├── README.md                                   # Main project documentation
+└── requirements.txt                            # Project dependencies
 ```
