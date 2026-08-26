@@ -1,0 +1,10 @@
+torch
+torchvision
+opencv-python
+pandas
+matplotlib
+rasterio
+timm
+pillow
+tqdm
+git+https://github.com/cvg/LightGlue.git
