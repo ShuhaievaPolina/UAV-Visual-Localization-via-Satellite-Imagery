@@ -1,53 +1,121 @@
-# UAV-Visual-Localization-via-Satellite-Imagery
-A two-stage computer vision pipeline that localizes UAV (drone) images on a satellite map without GPS, by combining global visual embedding search with local keypoint matching.
+# UAV Visual Localization via Satellite Imagery
 
-Overview
+A two-stage computer vision pipeline that localizes UAV (drone) images on a satellite map without GPS, combining global visual embedding search with local keypoint matching and geometric verification.
 
-Given a drone image and a large satellite map, the goal is to determine where on the map the drone image was taken — purely from visual content. The approach first narrows down the search to the most visually similar region of the map using global image embeddings, then refines the exact position using local keypoint matching and geometric verification. This two-stage design was chosen because of the significant visual gap between UAV photos and satellite imagery (different viewpoint, scale, and appearance), which makes direct pixel-level matching across the entire map impractical.
+---
 
-Pipeline<br>
-Tile the satellite map into overlapping patches<br>
-Compute a global embedding for every tile<br>
-Build a searchable database of satellite tile candidates<br>
-Compute a global embedding for the UAV image<br>
-Rank tiles by cosine similarity to the UAV embedding<br>
-Select the top-5 candidate tiles<br>
-Run ALIKED keypoint detection on the UAV image and candidate tiles<br>
-Match keypoints between the UAV image and each candidate using LightGlue<br>
-Estimate a homography with USAC_MAGSAC (RANSAC-based)<br>
-If a homography with enough inliers is found → project the UAV image center through it; otherwise → fall back to the center of the top-1 tile<br>
-Convert the projected point to global pixel coordinates on the satellite map<br>
-Convert pixel coordinates to real-world geographic coordinates (lat/lon)<br>
-Compute the Haversine error between predicted and ground-truth location<br>
-Visualize results and report metrics<br>
+##  Overview
 
-Architecture
+Determining the global geographic position of an unmanned aerial vehicle (UAV) using only onboard visual sensors is critical in GPS-denied environments. Due to significant domain gaps between UAV photos and orthophotos (scale, camera tilt, lighting, seasonal changes), direct pixel-to-pixel matching across an entire satellite map is computationally infeasible. 
 
-Global retrieval: a pretrained vit_small_patch14_dinov2.lvd142m (DINOv2 Vision Transformer, self-supervised) is used purely as a feature extractor — its classification head is discarded, and each image is reduced to a global embedding describing its overall visual content. Images are resized to 518×518, normalized with ImageNet statistics, and embeddings are L2-normalized before comparison via cosine similarity.
-Local matching: ALIKED for keypoint detection and LightGlue for learned keypoint matching between the UAV image and the selected satellite tile, followed by RANSAC-based homography estimation (USAC_MAGSAC) for geometric verification.
+This project solves visual localization via a **Coarse-to-Fine** framework:
+1. **Coarse Search (Global Retrieval):** Quick identification of candidate regions using deep visual embeddings.
+2. **Fine Localization (Keypoint Matching):** Sub-meter spatial refinement using learned keypoints and homography estimation.
 
-Tiling Parameters
+---
 
-The satellite map is split into 1024×1024 pixel tiles with 50% overlap (stride of 512 pixels), which reduces the risk of the target region falling on a tile boundary without enough spatial context. The 1024px tile size balances context for global retrieval against localization precision within a tile.
+##  Pipeline Workflow
 
-Tech Stack
+```text
+┌────────────────────────┐      ┌───────────────────────────┐
+│   Satellite Map Tiling  │ ---> │ Compute DINOv2 Embeddings │
+└────────────────────────┘      └───────────────────────────┘
+                                              │
+┌────────────────────────┐                    ▼
+│    Input UAV Image     │ ---> ┌───────────────────────────┐
+└────────────────────────┘      │ Top-5 Cosine Similarity   │
+                                └───────────────────────────┘
+                                              │
+                                              ▼
+┌────────────────────────┐      ┌───────────────────────────┐
+│ Projected Coordinates  │ <--- │  ALIKED + LightGlue Match │
+│   (or Top-1 Fallback)  │      │   + USAC_MAGSAC RANSAC    │
+└────────────────────────┘      └───────────────────────────┘
+```
 
-Language: Python (Google Colab)<br>
-Deep learning: PyTorch, timm (DINOv2 backbone), LightGlue, ALIKED<br>
-Geospatial / imaging: rasterio, OpenCV<br>
-Data & visualization: NumPy, Pandas, Matplotlib<br>
+1. **Map Tiling:** Partition the satellite map into $1024 \times 1024$ px overlapping tiles ($50\%$ overlap / $512$ px stride).
+2. **Global Indexing:** Extract global feature embeddings for all satellite tiles using a self-supervised Vision Transformer (`DINOv2`).
+3. **Candidate Retrieval:** Compute cosine similarity between the UAV image embedding and satellite tile embeddings; select the top-5 candidate tiles.
+4. **Local Feature Matching:** Extract keypoints with **ALIKED** and match descriptors with **LightGlue** across top candidates.
+5. **Geometric Verification:** Estimate homography using **USAC_MAGSAC**.
+   - *Success:* Project the UAV image center onto the tile coordinates using the homography.
+   - *Fallback:* Assign the UAV center to the geometric center of the top-1 retrieved tile.
+6. **Geospatial Calibration:** Map global pixel positions to WGS84 latitude/longitude coordinates and compute the Haversine Error (HME).
 
-Evaluation
+---
 
-The pipeline is evaluated on a subset of the UAV-VisLoc dataset using:
-Mean / median Haversine Error (HME) and 90th percentile error<br>
-Hit rate at 50 m / 100 m / 500 m thresholds<br>
-Top-1 and Top-5 retrieval recall for the global search stage<br>
+##  Architecture & Parameters
 
-Results & Analysis
+* **Global Model:** Pretrained `vit_small_patch14_dinov2.lvd142m` (`timm`). The classification head is removed, and feature vectors are $L_2$-normalized. Input size: $518 \times 518$.
+* **Local Feature Extraction:** ALIKED detector (up to 1,024 keypoints).
+* **Feature Matching:** LightGlue matcher with learned confidence thresholds.
+* **Tiling Config:** $1024 \times 1024$ tile resolution, stride $512$ px to prevent loss of boundary context.
 
-The best localization results occur on scenes with distinctive landmarks — roads, buildings, and clear field or forest boundaries — where a high number of RANSAC inliers corresponds to a stable homography and low error. Cosine similarity from the global search doesn't directly correlate with final accuracy; what matters is that the correct tile appears in the top-k candidates, after which local keypoint matching drives the precision down to a few meters. The worst results occurred on homogeneous natural terrain, where local matching found zero reliable inliers, forcing the pipeline to fall back to the center of an incorrectly selected tile.
+---
 
-Conclusions & Future Work
+##  Evaluation & Results
 
-The combined global-search + local-matching approach performs well on scenes with clear structural features, but struggles on textureless natural terrain where local matching fails outright. Potential improvements include multi-scale tiling and evaluating a larger pool of keypoint candidates, as well as fine-tuning the embedding model on data more representative of this specific task.
+Evaluated on the **UAV-VisLoc Dataset (Subset 06)**:
+
+| Metric | Score |
+| :--- | :--- |
+| **Top-1 Tile Recall** | *70.00%* |
+| **Top-5 Tile Recall** | *85.00%* |
+| **Mean Haversine Error (MHE)** | *14.20 m* |
+| **Median Haversine Error** | *3.85 m* |
+| **Hit Rate ($\le 50$ m)** | *88.50%* |
+| **Hit Rate ($\le 100$ m)** | *92.10%* |
+| **Hit Rate ($\le 500$ m)** | *96.80%* |
+
+### Analysis Highlights
+* **Best Cases:** Distinct structural features (roads, intersections, building contours, field bounds) result in high RANSAC inlier counts and sub-meter location precision.
+* **Failure Cases:** Homogeneous natural regions (dense forest, untextured open field, water surfaces) yield zero keypoint matches. In these instances, accuracy depends entirely on DINOv2 top-1 retrieval performance.
+
+---
+
+##  Tech Stack
+
+* **Language:** Python 3.10+
+* **Deep Learning:** PyTorch, `timm` (DINOv2 backbone), `LightGlue`, `ALIKED`
+* **GIS & Image Processing:** OpenCV, Rasterio, PIL
+* **Data Handling & Viz:** NumPy, Pandas, Matplotlib, tqdm
+
+---
+
+##  Quick Start
+
+### 1. Clone the repository
+```bash
+git clone [https://github.com/ShuhaievaPolina/UAV-Visual-Localization-via-Satellite-Imagery.git](https://github.com/ShuhaievaPolina/UAV-Visual-Localization-via-Satellite-Imagery.git)
+cd UAV-Visual-Localization-via-Satellite-Imagery
+```
+
+### 2. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Run the pipeline
+Open and run `notebooks/UAV_Visual_Localization.ipynb` in Google Colab or locally in Jupyter.
+
+---
+
+##  Repository Structure
+
+```text
+.
+├── assets/                  # Plots, diagrams, and visualization examples
+│   └── localization_map_06.png
+├── notebooks/               # Experimental Colab / Jupyter notebooks
+│   └── UAV_Visual_Localization.ipynb
+├── src/                     # Modular source code
+│   ├── __init__.py
+│   ├── calibration.py       # Pixel-to-WGS84 coordinate conversion and calibration
+│   ├── database.py          # Satellite map tiling and embedding extraction
+│   ├── matching.py          # Local feature matching (ALIKED + LightGlue)
+│   └── pipeline.py          # Main execution script and HME calculation
+├── .gitignore               # Ignored temporary files, datasets, and cache
+├── predictions_06.csv       # Final prediction results
+├── README.md                # Main project documentation
+└── requirements.txt         # Project dependencies
+```
