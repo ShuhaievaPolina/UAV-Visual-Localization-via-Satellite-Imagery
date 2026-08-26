@@ -96,7 +96,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Run the pipeline
-Open and run `notebooks/UAV_Visual_Localization.ipynb` in Google Colab or locally in Jupyter.
+Open and run `UAV_Visual_Localization.ipynb` in Google Colab or locally in Jupyter.
 
 ---
 
